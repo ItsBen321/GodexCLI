@@ -30,6 +30,17 @@ var project_settings: Dictionary = {
 }
 
 
+func _enable_plugin() -> void:
+	print_rich("Read the documentation and see examples over on https://github.com/ItsBen321/GodexCLI")
+	print_rich("\nMake sure you have the Codex CLI installed and configured on your PC")
+	print_rich("\nTo insert code, start a command using #/ on a new line and close with /#")
+	print_rich("\n\tExample:[i] #/ insert a function that validates all properties /#[/i]")
+	print_rich("\nTo analyze, improve or fix code, start a command using #/ and close with /# after the code block")
+	print_rich("\n\tExample:[i] #/ fix the error handling in this code and rework the for-loop. Explain what went wrong ...(code block in between)... /#[/i]")
+	print_rich("\nTo ask questions, start a command using #( on a new line and close with )#")
+	print_rich("\n\tExample:[i] #( give an example of a good state-machine and explain how I should implement it in my script )#[/i]")
+
+
 func _enter_tree() -> void:
 	_display_ascii()
 	_setup_settings()
@@ -278,12 +289,6 @@ func display_main(text: String):
 func display_process(text: String):
 	print_rich("[code][i]%s[/i][/code]\n\n" % text)
 
-	
-func send_message(text: String):
-	display_input(text)
-	var prompt: String = context + text
-	start_session(prompt, ASK)
-	
 	
 func send_insert(text: String):
 	var text_input: String = text.lstrip("#/").rstrip("/#").strip_edges()
