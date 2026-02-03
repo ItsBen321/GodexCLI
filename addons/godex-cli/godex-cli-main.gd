@@ -19,6 +19,7 @@ var prompt_timer: int
 var processing: bool = false
 var active_editor: CodeEdit
 var active_mode: String
+var fix_line_cache: Array[int]
 var editor_settings: Dictionary = {
 	prefix + "enabled": true,
 	prefix + "context_dir": "res://addons/godex-cli/context"
@@ -173,8 +174,37 @@ func _fix_output(text: String):
 	var line: int = _find_line()
 	if line == -1: return
 	active_editor.remove_line_at(line)
-
+	for l: int in fix_line_cache:
+		l -= 1
+	var old_script: String = _get_old_script(fix_line_cache)
+	var new_script: String = json["CODE"]
+	_popup_fix_window(json["DESCRIPTION"], old_script, new_script)
 	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
+	
+	
+func _get_old_script(lines: Array[int]) -> String:
+	var line_string_array: PackedStringArray = []		
+	var script_string: String
+	for l in lines:
+		line_string_array.append(active_editor.get_line(l))
+	script_string = "\n".join(line_string_array)
+	return script_string
+	
+	
+func _popup_fix_window(explainer: String, old_script: String, new_script: String):
+	fix_window = FIX_WINDOW.instantiate()
+	add_child(fix_window)
+	fix_window.setup(explainer, old_script, new_script)
+	fix_window.confirm.connect(_fix_confirm)
+	
+
+func _fix_confirm(new_script: String):
+	fix_line_cache.reverse()
+	active_editor.begin_complex_operation()
+	for l: int in fix_line_cache:
+		active_editor.remove_line_at(l)
+	active_editor.insert_line_at(fix_line_cache[-1], new_script)
+	active_editor.end_complex_operation()
 
 
 func _check_error_pipe():
@@ -244,6 +274,7 @@ func send_fix(lines: Array[int]):
 	var script_editor: CodeEdit = EditorInterface.get_script_editor().get_current_editor().get_base_editor()
 	var text_input: String = script_editor.get_line(lines[0]).strip_edges().lstrip("#/").strip_edges()
 	lines.remove_at(0)
+	fix_line_cache = lines.duplicate()
 	script_editor.set_line(lines[-1],script_editor.get_line(lines[-1]).rstrip("/#"))
 	display_input(text_input)
 	var prompt_json: Dictionary = {
