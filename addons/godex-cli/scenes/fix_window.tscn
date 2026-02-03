@@ -31,12 +31,13 @@ vertical_alignment = 1
 [node name="HSplitContainer" type="HSplitContainer" parent="VBoxContainer" unique_id=1655010923]
 layout_mode = 2
 size_flags_vertical = 3
+split_offsets = PackedInt32Array(-1)
+split_offset = -1
 
 [node name="old_script_edit" type="CodeEdit" parent="VBoxContainer/HSplitContainer" unique_id=1941106065]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "too"
 caret_type = 1
 syntax_highlighter = SubResource("GDScriptSyntaxHighlighter_vvie6")
 highlight_all_occurrences = true
@@ -77,6 +78,6 @@ text = "Cancel (Esc)"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Confirm (Ctrl+Esc)"
+text = "Confirm (Shift+Esc)"
 
 [connection signal="close_requested" from="." to="." method="_on_close_requested"]

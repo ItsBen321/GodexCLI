@@ -20,6 +20,7 @@ var processing: bool = false
 var active_editor: CodeEdit
 var active_mode: String
 var fix_line_cache: Array[int]
+var current_action: String
 var editor_settings: Dictionary = {
 	prefix + "enabled": true,
 	prefix + "context_dir": "res://addons/godex-cli/context"
@@ -67,7 +68,7 @@ func _display_ascii():
    
 
 func _process(delta: float) -> void:
-	# processing insert command in script
+	# processing insert/fix/ask command in script
 	var main_edit := EditorInterface.get_script_editor().get_current_editor()
 	var current_editor: CodeEdit
 	if main_edit: current_editor = main_edit.get_base_editor()
@@ -75,18 +76,24 @@ func _process(delta: float) -> void:
 	var current_line: int = current_editor.get_caret_line()
 	var current_string: String = current_editor.get_line(current_line).strip_edges()
 	if current_string.ends_with("/#"):
-		if current_string.begins_with("#/"): 
-			if not processing: send_insert(current_string)
-		elif current_editor.text.contains("#/"):
-			if not processing: send_fix(_find_fix_lines())
+		if current_string.begins_with("#/") and not processing:
+			send_insert(current_string)
+		elif current_editor.text.contains("#/") and not processing:
+			send_fix(_find_fix_lines())
+	if current_string.ends_with(")#") and current_string.begins_with("#(") and not processing:
+		send_ask(current_line, current_string)
 	# processing codex output buffer
 	if codex_process.is_empty(): return
 	if not OS.is_process_running(codex_pid):
 		var exit_code := OS.get_process_exit_code(codex_pid)
+		codex_process.clear()
+		output_pipe = null
+		error_pipe = null
+		processing = false
 		if exit_code != OK:
 			display_process("✱ Process finished with code: " + error_string(exit_code))
-		codex_process.clear()
-		processing = false
+		return
+	if output_pipe == null and error_pipe == null:
 		return
 	_check_output_pipe()
 	_check_error_pipe()
@@ -111,6 +118,7 @@ func _find_fix_lines() -> Array[int]:
 
 
 func _check_output_pipe():
+	if codex_process.is_empty() or not OS.is_process_running(codex_pid): return
 	if output_pipe == null: return
 	var new_text: String = output_pipe.get_as_text()
 	if new_text.is_empty(): return
@@ -143,17 +151,23 @@ func _process_output(new_text: String):
 		"item.completed":
 			match json["item"]["type"]:
 				"command_execution":
-					display_process("[color=%s]✎ executing:[/color] %s" % [color_code, str(json["item"]["command"])])
+					current_action = "✎ executing"
+					display_process("[color=%s]%s[/color]" % [color_code, current_action])
 				"reasoning":
-					display_process("[color=%s]∞ reasoning:[/color] %s" % [color_code, str(json["item"]["text"])])
+					current_action = "∞ reasoning"
+					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(json["item"]["text"])])
 				"web_search":
-					display_process("[color=%s]⌕ web search:[/color] %s" % [color_code, str(json["item"]["query"])])
+					current_action = "⌕ web search"
+					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(json["item"]["query"])])
 				"agent_message":
 					match active_mode:
 						INSERT:
 							_insert_output(str(json["item"]["text"]))
 						FIX:
 							_fix_output(str(json["item"]["text"]))
+						ASK:
+							_ask_output(str(json["item"]["text"]))
+							
 					
 func _insert_output(text: String):
 	var json := JSON.parse_string(text)
@@ -174,11 +188,22 @@ func _fix_output(text: String):
 	var line: int = _find_line()
 	if line == -1: return
 	active_editor.remove_line_at(line)
-	for l: int in fix_line_cache:
-		l -= 1
+	for l: int in fix_line_cache.size():
+		fix_line_cache[l] -= 1
 	var old_script: String = _get_old_script(fix_line_cache)
 	var new_script: String = json["CODE"]
 	_popup_fix_window(json["DESCRIPTION"], old_script, new_script)
+	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
+	
+
+func _ask_output(text: String):
+	var json := JSON.parse_string(text)
+	if not typeof(json) == TYPE_DICTIONARY:
+		display_main("[color=%s]► [/color]%s" % [color_code, str(json)])
+		return	
+	var new_script: String = json["CODE"]
+	if not new_script.is_empty():
+		_popup_ask_window(json["DESCRIPTION"], new_script)
 	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
 	
 	
@@ -194,9 +219,15 @@ func _get_old_script(lines: Array[int]) -> String:
 func _popup_fix_window(explainer: String, old_script: String, new_script: String):
 	fix_window = FIX_WINDOW.instantiate()
 	add_child(fix_window)
-	fix_window.setup(explainer, old_script, new_script)
+	fix_window.setup_fix(explainer, old_script, new_script)
 	fix_window.confirm.connect(_fix_confirm)
 	
+
+func _popup_ask_window(explainer: String, new_script: String):
+	fix_window = FIX_WINDOW.instantiate()
+	add_child(fix_window)
+	fix_window.setup_ask(explainer, new_script)
+
 
 func _fix_confirm(new_script: String):
 	fix_line_cache.reverse()
@@ -208,25 +239,26 @@ func _fix_confirm(new_script: String):
 
 
 func _check_error_pipe():
+	if codex_process.is_empty() or not OS.is_process_running(codex_pid): return
 	if output_pipe == null: return
 	var new_text: String = error_pipe.get_as_text()
 	if new_text.is_empty(): return
 	print("error: " + new_text)
-	
-	
+
+
 func _find_line()-> int:
 	for l: int in active_editor.get_line_count():
 		if active_editor.get_line(l).strip_edges().ends_with("req id: %d" % codex_pid):
 			return l
 	return -1
-	
-	
+
+
 func loading_animation(frame: int = 0) -> void:
 	if not active_editor or not processing: return
 	const speed: float = 0.1
 	var loading_spinner: String = "⣾⣽⣻⢿⡿⣟⣯⣷"
 	if frame >= loading_spinner.length(): frame = 0
-	var new_line: String = "# %s loading | req id: %d" % [loading_spinner[frame],codex_pid]
+	var new_line: String = "# %s %s | req id: %d" % [loading_spinner[frame],current_action,codex_pid]
 	var line: int = _find_line()
 	if line == -1: return
 	active_editor.set_line(line, new_line)
@@ -288,6 +320,22 @@ func send_fix(lines: Array[int]):
 	}
 	var prompt_string = context + JSON.stringify(prompt_json)
 	start_session(prompt_string, FIX)
+	
+	
+func send_ask(current_line: int, current_string: String):
+	var text_input: String = current_string.lstrip("#(").rstrip(")#").strip_edges()
+	display_input(text_input)
+	var prompt_json: Dictionary = {
+		"MODE": ASK,
+		"INFO": text_input,
+		"DATA": {
+			"SCRIPT": ProjectSettings.globalize_path(
+				EditorInterface.get_script_editor().get_current_script().resource_path),
+			"LINE": EditorInterface.get_script_editor().get_current_editor().get_base_editor().get_caret_line()
+		}
+	}
+	var prompt_string = context + JSON.stringify(prompt_json)
+	start_session(prompt_string, ASK)
 
 	
 func start_session(prompt: String, mode: String):
@@ -323,6 +371,7 @@ func start_session(prompt: String, mode: String):
 	# setup animations
 	match mode:
 		INSERT:
+			current_action = "loading"
 			var new_line: String = "# loading | req id: %d" % codex_pid
 			var line: int = active_editor.get_caret_line()
 			if line == -1: return
@@ -330,6 +379,7 @@ func start_session(prompt: String, mode: String):
 			active_editor.set_line_background_color(line, Color(1.0, 0.6, 0.1, 0.05))
 			loading_animation()
 		FIX:
+			current_action = "loading"
 			var new_line: String = "# loading | req id: %d" % codex_pid
 			var line: int = -1
 			for l: int in active_editor.get_line_count():
@@ -340,3 +390,5 @@ func start_session(prompt: String, mode: String):
 			active_editor.set_line(line, new_line)
 			active_editor.set_line_background_color(line, Color(1.0, 0.6, 0.1, 0.05))
 			loading_animation()
+		ASK:
+			active_editor.remove_line_at(active_editor.get_caret_line())
