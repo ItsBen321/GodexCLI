@@ -1,5 +1,7 @@
 # Godex CLI
 
+[View the DEMO video here with setup instructions and examples](https://youtu.be/lgm5tGClW2w)
+
 Improved version of Godex.
 Integrate the OpenAI Codex CLI directly into the Godot editor. This plugin lets you ask questions, insert code, and request fixes **from inside the Script Editor**, using a locally installed Codex CLI (no API key in the plugin).
 This plugis in **NOT BUILT** for vibe coding, don't let it create your whole project!! It only has permissions to read files, inserting code and writing to the editor is handled manually by the plugin for more fine-grained control.
@@ -13,7 +15,7 @@ This plugis in **NOT BUILT** for vibe coding, don't let it create your whole pro
 - **FIX**: select a block and ask Codex to refactor or correct it.
 - **In‑editor output**: results show up in the editor and (for FIX/ASK) a popup with a preview.
 - **Context**: has full project context and read access, and remembers conversations.
-- Customizing: easily change the behavior, formatting and skills that Godex respects.
+- **Customizing**: easily change the behavior, formatting and skills that Godex respects.
 
 ---
 
@@ -104,6 +106,8 @@ Type a question at your cursor with the **ASK syntax** "#(~)#":
 The plugin removes the line and displays the answer in the editor output.
 When you ask for examples, it will use a popup window to show the code example.
 
+![ask-example](assets/ask_example_3.png)
+
 ---
 
 ### 2) INSERT (Generate code at cursor)
@@ -114,6 +118,8 @@ Use the **INSERT syntax** "#/~/#" to generate code at the current line:
 ```
 
 Godex will return a code block and the plugin inserts it at the marked line.
+
+![insert-example](assets/insert_example_1.png)
 
 ---
 
@@ -128,6 +134,8 @@ func _process(delta: float) -> void:
 ```
 
 Godex returns a suggested rewrite or analysis. A popup window lets you compare, make changes and accept it.
+
+![fix-example](assets/fix_example_2.png)
 
 ---
 
@@ -163,7 +171,7 @@ addons/godex-cli/
 
 ---
 
-## Roadmap Ideas
+## Roadmap
 
 - Better error surfacing in UI
 - Session history
@@ -183,9 +191,3 @@ Created by **Ben Heirbaut**.
 ## License
 
 MIT
-
----
-
-## Contributions
-
-/

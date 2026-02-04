@@ -1,3 +1,24 @@
+##[b]Godex CLI[/b]
+##A lightweight Godot editor plugin that connects to the [i]Codex CLI[/i] so you can ask questions, insert code, and request fixes directly from the script editor.
+##
+##[b]Syntax[/b]
+##- [b]INSERT[/b]: [code]#/ ... /#[/code]
+##- [b]FIX[/b]: [code]#/ ... [/code] [i]wraps a code block[/i] [code]/#[/code]
+##- [b]ASK[/b]: [code]#( ... )#[/code]
+##
+##[b]Examples[/b]
+##[b]INSERT[/b]
+##[code]#/ create a function that validates all properties /#[/code]
+##
+##[b]FIX[/b]
+##[code]#/ improve this loop and add error handling
+##func do_work():
+##	# ...
+##/#[/code]
+##
+##[b]ASK[/b]
+##[code]#( explain how to structure a simple state machine )#[/code]
+
 @tool
 extends EditorPlugin
 
@@ -22,23 +43,16 @@ var active_mode: String
 var fix_line_cache: Array[int]
 var current_action: String
 var editor_settings: Dictionary = {
-	prefix + "enabled": true,
 	prefix + "context_dir": "res://addons/godex-cli/context"
 }
 var project_settings: Dictionary = {
-	prefix + "session_id": ""
+	prefix + "session_id": "",
+	prefix + "use_git": false
 }
 
 
 func _enable_plugin() -> void:
-	print_rich("Read the documentation and see examples over on https://github.com/ItsBen321/GodexCLI")
-	print_rich("\nMake sure you have the Codex CLI installed and configured on your PC")
-	print_rich("\nTo insert code, start a command using #/ on a new line and close with /#")
-	print_rich("\n\tExample:[i] #/ insert a function that validates all properties /#[/i]")
-	print_rich("\nTo analyze, improve or fix code, start a command using #/ and close with /# after the code block")
-	print_rich("\n\tExample:[i] #/ fix the error handling in this code and rework the for-loop. Explain what went wrong ...(code block in between)... /#[/i]")
-	print_rich("\nTo ask questions, start a command using #( on a new line and close with )#")
-	print_rich("\n\tExample:[i] #( give an example of a good state-machine and explain how I should implement it in my script )#[/i]")
+	print_rich("Read the documentation and see examples over on [url]https://github.com/ItsBen321/GodexCLI[/url]")
 
 
 func _enter_tree() -> void:
@@ -110,6 +124,7 @@ func _process(delta: float) -> void:
 	_check_error_pipe()
 	
 	
+
 func _find_fix_lines() -> Array[int]:
 	var lines: Array[int] = []
 	var in_chunk: bool = false
@@ -148,36 +163,42 @@ func _check_output_pipe():
 func _process_output(new_text: String):
 	var json := JSON.parse_string(new_text)
 	if not typeof(json) == TYPE_DICTIONARY: return
-	match json["type"]:
+	match str(json.get("type", "")):
 		"thread.started":
-			ProjectSettings.set_setting(prefix + "session_id", str(json["thread_id"]))
+			ProjectSettings.set_setting(prefix + "session_id", str(json.get("thread_id", "")))
 			display_process("✱ starting")
 		"turn.completed":
-			var input_tokens: int = int(json["usage"]["input_tokens"])
-			var output_tokens: int = int(json["usage"]["output_tokens"])
-			var cached_input_tokens: int = int(json["usage"]["cached_input_tokens"])
+			var usage: Dictionary = json.get("usage", {})
+			var input_tokens: int = int(usage.get("input_tokens", 0))
+			var output_tokens: int = int(usage.get("output_tokens", 0))
+			var cached_input_tokens: int = int(usage.get("cached_input_tokens", 0))
 			var final_time: int = Time.get_ticks_msec() - prompt_timer
-			display_process("✱ finished:\n\tcached tokens: %d\n\tinput tokens: %d\n\toutput tokens: %d\n\tprocess time: %d ms" % 
+			display_process("✱ finished:\n\tcached tokens: %d\n\tinput tokens: %d\n\toutput tokens: %d\n\tprocess time: %d ms" %
 				[cached_input_tokens, input_tokens, output_tokens, final_time])
 		"item.completed":
-			match json["item"]["type"]:
+			var item: Dictionary = json.get("item", {})
+			match str(item.get("type", "")):
 				"command_execution":
 					current_action = "✎ executing"
 					display_process("[color=%s]%s[/color]" % [color_code, current_action])
 				"reasoning":
 					current_action = "∞ reasoning"
-					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(json["item"]["text"])])
+					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(item.get("text", ""))])
 				"web_search":
 					current_action = "⌕ web search"
-					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(json["item"]["query"])])
+					display_process("[color=%s]%s:[/color] %s" % [color_code, current_action, str(item.get("query", ""))])
 				"agent_message":
+					var n: int = 0
+					while not codex_process.is_empty() and n < 100:
+						await get_tree().physics_frame
+						n += 1
 					match active_mode:
 						INSERT:
-							_insert_output(str(json["item"]["text"]))
+							_insert_output(str(item.get("text", "")))
 						FIX:
-							_fix_output(str(json["item"]["text"]))
+							_fix_output(str(item.get("text", "")))
 						ASK:
-							_ask_output(str(json["item"]["text"]))
+							_ask_output(str(item.get("text", "")))
 							
 					
 func _insert_output(text: String):
@@ -187,8 +208,8 @@ func _insert_output(text: String):
 		return	
 	var line: int = _find_line()
 	if line == -1: return
-	active_editor.set_line(line, json["CODE"])
-	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
+	active_editor.set_line(line, json.get("CODE","No code found."))
+	display_main("[color=%s]► [/color]%s" % [color_code, json.get("DESCRIPTION","No description found.")])
 	
 	
 func _fix_output(text: String):
@@ -202,9 +223,9 @@ func _fix_output(text: String):
 	for l: int in fix_line_cache.size():
 		fix_line_cache[l] -= 1
 	var old_script: String = _get_old_script(fix_line_cache)
-	var new_script: String = json["CODE"]
-	_popup_fix_window(json["DESCRIPTION"], old_script, new_script)
-	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
+	var new_script: String = json.get("CODE","No code found.")
+	_popup_fix_window(json.get("DESCRIPTION","No description found."), old_script, new_script)
+	display_main("[color=%s]► [/color]%s" % [color_code, json.get("DESCRIPTION","No description found.")])
 	
 
 func _ask_output(text: String):
@@ -212,10 +233,10 @@ func _ask_output(text: String):
 	if not typeof(json) == TYPE_DICTIONARY:
 		display_main("[color=%s]► [/color]%s" % [color_code, str(json)])
 		return	
-	var new_script: String = json["CODE"]
+	var new_script: String = json.get("CODE","No code found.")
 	if not new_script.is_empty():
-		_popup_ask_window(json["DESCRIPTION"], new_script)
-	display_main("[color=%s]► [/color]%s" % [color_code, json["DESCRIPTION"]])
+		_popup_ask_window(json.get("DESCRIPTION","No description found."), new_script)
+	display_main("[color=%s]► [/color]%s" % [color_code, json.get("DESCRIPTION","No description found.")])
 	
 	
 func _get_old_script(lines: Array[int]) -> String:
@@ -251,7 +272,7 @@ func _fix_confirm(new_script: String):
 
 func _check_error_pipe():
 	if codex_process.is_empty() or not OS.is_process_running(codex_pid): return
-	if output_pipe == null: return
+	if error_pipe == null: return
 	var new_text: String = error_pipe.get_as_text()
 	if new_text.is_empty(): return
 	print("error: " + new_text)
@@ -262,6 +283,19 @@ func _find_line()-> int:
 		if active_editor.get_line(l).strip_edges().ends_with("req id: %d" % codex_pid):
 			return l
 	return -1
+
+
+func _fetch_path() -> String:
+	var current_path: String = ""
+	var current_script := EditorInterface.get_script_editor().get_current_script()
+	if current_script:
+		current_path = current_script.resource_path
+	else:
+		current_path = EditorInterface.get_current_path()
+	if current_path.is_empty():
+		push_error("No current file path found (script or dock selection).")
+		return "Path was not found."
+	return current_path
 
 
 func loading_animation(frame: int = 0) -> void:
@@ -298,7 +332,7 @@ func send_insert(text: String):
 		"INFO": text_input,
 		"DATA": {
 			"SCRIPT": ProjectSettings.globalize_path(
-				EditorInterface.get_script_editor().get_current_script().resource_path),
+				_fetch_path()),
 			"LINE": EditorInterface.get_script_editor().get_current_editor().get_base_editor().get_caret_line()
 		}
 	}
@@ -319,7 +353,7 @@ func send_fix(lines: Array[int]):
 		"INFO": text_input,
 		"DATA": {
 			"SCRIPT": ProjectSettings.globalize_path(
-				EditorInterface.get_script_editor().get_current_script().resource_path),
+				_fetch_path()),
 			"LINE": lines
 		}
 	}
@@ -335,7 +369,7 @@ func send_ask(current_line: int, current_string: String):
 		"INFO": text_input,
 		"DATA": {
 			"SCRIPT": ProjectSettings.globalize_path(
-				EditorInterface.get_script_editor().get_current_script().resource_path),
+				_fetch_path()),
 			"LINE": EditorInterface.get_script_editor().get_current_editor().get_base_editor().get_caret_line()
 		}
 	}
@@ -356,10 +390,13 @@ func start_session(prompt: String, mode: String):
 		"read-only",
 		"exec",
 	]
+	if not project_settings[prefix + "use_git"]:
+		process_json.append("--skip-git-repo-check")
 	if not project_settings[prefix + "session_id"].is_empty():
 		process_json.append_array([
 			"resume", project_settings[prefix + "session_id"]])
-	process_json.append_array(["--json", prompt.replace("\"","")])
+	var escaped_prompt: String = prompt.replace("\"", "\\\"")
+	process_json.append_array(["--json", escaped_prompt]) 
 	# setup for the process
 	prompt_timer = Time.get_ticks_msec()
 	processing = true
