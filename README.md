@@ -152,6 +152,11 @@ Godex returns a suggested rewrite or analysis. A popup window lets you compare, 
 **The plugin does nothing / no response**
 - Make sure `codex` is on your PATH.
 - Check the Godot output panel for process errors.
+- Has only been tested on Windows, a different OS or changed settings might cause errors.
+**The plugin replies but gives errors**
+- Launch Codex in the terminal and check the settings / version.
+- Newer updates to Codex might change its behavior, please report.
+- Ask Godex itself how to resolve an error, it might suggest altering the plugin or Codex config.
 
 ---
 
@@ -175,10 +180,23 @@ addons/godex-cli/
 
 - Better error surfacing in UI
 - Session history
-- More robust JSON parsing / buffered output handling
 - Custom hotkeys for ASK/INSERT/FIX
 - Extra functionality
 - Optional custom hooks and prompts
+
+---
+
+## Changelog
+
+### 1.1
+**Fixes**
+- JSON parsing errors with the new Codex update, outputs are now handled more robustly
+- Some outputs could get lost to the void (performs extra buffer reads at the end)
+- Changed project settings immediately apply
+
+**Improvements**
+- Increased speed and performance of the AI a lot (better prompts and context management)
+- Added reasoning option in Project Settings
 
 ---
 
